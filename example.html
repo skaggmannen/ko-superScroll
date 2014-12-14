@@ -1,0 +1,73 @@
+<!doctype html>
+<html style="height: 100%">
+<head>
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+	<script type="text/javascript" src="knockout-3.2.0.js"></script>
+	<script type="text/javascript" src="ko-superScroll.js"></script>
+	<title>SuperScroll Example</title>
+</head>
+<body style="height: 100%">
+	<h1>SuperScroll Example</h1>
+	<input type="range" value="120" min="40" max="200" step="1" data-bind="value: myChildWidth" />
+	<p data-bind="text: myChildWidth"></p>
+	<div style="width: 1000px; height: 70%; overflow: auto" data-bind="superScroll: { template: myTemplate, resource: myResource, childSize: myChildSize }"></div>
+	<script type="text/javascript">
+	$(document).ready(function () {
+		function Child(aPhrase) {
+			var self = this;
+
+			self.myPhrase = aPhrase;
+		}
+
+		function ViewModel() {
+			var self = this;
+
+			self.myTemplate = "child-template";
+			self.myPhrase = "Hello";
+			self.myChildWidth = ko.observable(120);
+
+			self.myChildSize = ko.pureComputed(function() {
+				return {
+					myWidth: self.myChildWidth(),
+					myHeight: self.myChildWidth(),
+				}
+			});
+		
+			self.myChildren = new Array(100);
+
+			for (var i = 0; i < self.myChildren.length; i++) {
+				self.myChildren[i] = new Child(" World " + i);
+			}
+
+			var count = 10000;
+
+			self.myResource = {
+				getCount: function() {
+					return count;
+				},
+				get: function(aOffset, aLimit) {
+					var children = [];
+					for (var i = aOffset; i < aOffset + aLimit; i++) {
+						if (i >= count) {
+							break;
+						}
+
+						var child = new Child("World " + i);
+						children.push(child);
+					}
+
+					return children;
+				},
+			}
+
+		}
+
+		ko.applyBindings(new ViewModel());
+	});
+	</script>
+
+	<script type="text/html" id="child-template">
+		<div style="width: 100%; height: 100%" data-bind="text: $parent.myPhrase + myPhrase"></div>
+	</script>
+</body>
+</html>

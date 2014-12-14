@@ -1,306 +1,382 @@
 var template = '\
-<div data-bind="style: containerStyle"> \
-	<!-- ko foreach: blocks --> \
-		<div data-bind="foreach: children, style: blockStyle"> \
-			<!-- ko template: { name: $parents[1].data.childTemplate, data: $data } --> \
-			<!-- /ko --> \
-		</div> \
-	<!-- /ko --> \
-</div>';
+<script type="text/html" id="super-scroll-template"> \
+<!-- ko if: myData.myContext --> \
+	<div data-bind="style: myStyle"> \
+		<!-- ko foreach: myBlocks --> \
+			<div data-bind="style: myStyle"> \
+				<!-- ko foreach: myChildren --> \
+					<div data-bind="style: myStyle"> \
+						<div data-bind="superScrollChild: { template: myTemplate, context: myContext }"></div> \
+					</div> \
+				<!-- /ko --> \
+			</div> \
+		<!-- /ko --> \
+	</div> \
+<!-- /ko --> \
+</script>';
 
-function getBrowserScrollSize(){
+$(document).ready(function () {
+	$("body").append(template);
+});
 
-    var css = {
-        "border":  "none",
-        "height":  "200px",
-        "margin":  "0",
-        "padding": "0",
-        "width":   "200px"
-    };
-
-    var inner = $("<div>").css($.extend({}, css));
-    var outer = $("<div>").css($.extend({
-        "left":       "-1000px",
-        "overflow":   "scroll",
-        "position":   "absolute",
-        "top":        "-1000px"
-    }, css)).append(inner).appendTo("body")
-    .scrollLeft(1000)
-    .scrollTop(1000);
-
-    var scrollSize = {
-        "height": (outer.offset().top - inner.offset().top) || 0,
-        "width": (outer.offset().left - inner.offset().left) || 0
-    };
-
-    outer.remove();
-    return scrollSize;
-};
-
-function SharedData() {
+function ListData(aElement) {
 	var self = this;
 
-	self.resource = null;
-	self.element = null;
-	self.childTemplate = null;
-	self.childSize = null;
+	self.myElement = aElement;
+	self.myContext = ko.observable();
+	self.myChildTemplate = ko.observable();
+	self.myResource = ko.observable();
+	self.myChildSize = ko.observable();
+	self.myElementSize = ko.observable();
 
-	self.elementSize = ko.observable();
-	self.childCount = ko.observable(10000);
-	self.scrollTop = ko.observable();
-
-	self.gridSize = ko.pureComputed(function () {
-		var elementSize = self.elementSize();
-		var childSize = ko.unwrap(self.childSize);
-
-		if (elementSize == undefined ||
-			childSize == undefined ||
-			childSize.width == 0 ||
-			childSize.height == 0)
-		{
-			return {
-				cols: 0,
-				rows: 0,
-			};
+	self.myChildCount = ko.pureComputed(function () {
+		var resource = self.myResource();
+		if (!resource) {
+			return 0;
 		}
 
-		var cols = Math.floor((elementSize.width - getBrowserScrollSize().width) / childSize.width);
-		var rows = Math.ceil(elementSize.height / childSize.height);
+		return resource.getCount();
+	});
 
-		if (cols == 0)
+	self.myGrid = ko.pureComputed(function() {
+		var elementSize = self.myElementSize();
+		var childSize = self.myChildSize();
+
+		if (!childSize || !elementSize ||
+			childSize.myWidth == 0 || 
+			childSize.myHeight == 0)
 		{
+			return undefined;
+		}
+
+		var width = elementSize.myWidth;
+		var height = elementSize.myHeight;
+
+		var cols = Math.floor(width / childSize.myWidth);
+		var rows = Math.ceil(height / childSize.myHeight);
+
+		if (cols == 0) {
 			cols = 1;
 		}
-
-		if (rows == 0)
-		{
+		if (rows == 0) {
 			rows = 1;
 		}
 
 		return {
-			cols: cols,
-			rows: rows,
-		};
-	});
-
-	self.blockSize = ko.pureComputed(function () {
-		var grid = self.gridSize();
-
-		return grid.cols * grid.rows;
-	});
-};
-
-function Block(data) {
-	var self = this;
-
-	self.data = data;
-
-	self.cursor = ko.observable(-1);
-
-	self.children = ko.computed(function () {
-		var offset = self.cursor() * self.data.blockSize();
-		var count = ko.unwrap(self.data.childCount);
-
-		if (offset < 0 || count == 0) {
-			return [];
-		}
-
-		var blockSize = self.data.blockSize();
-		if (offset + blockSize > count)
-		{
-			blockSize = count - offset;
-		}
-
-		return data.resource.get(offset, blockSize);
-	});
-
-	self.top = ko.pureComputed(function () {
-		var gridSize = self.data.gridSize();
-		var childSize = ko.unwrap(self.data.childSize);
-
-		if (!gridSize || !childSize)
-		{
-			return -10000;
-		}
-
-		return self.cursor() * gridSize.rows * childSize.height;
-	});
-
-	self.blockStyle = ko.pureComputed(function () {
-		return {
-			position: 'absolute',
-			top: self.top() + 'px',
-			width: '100%',
+			myCols: cols,
+			myRows: rows,
+			myWidth: cols*childSize.myWidth,
+			myHeight: rows*childSize.myHeight,
 		};
 	});
 }
 
-function SuperScroll(data) {
-
+function ListChild(aData, aX, aY) {
 	var self = this;
 
-	self.data = data;
+	self.myData = aData;
 
-	self.scrollTop = ko.observable(0);
+	self.myChildModel = ko.observable();
+	self.myX = aX;
+	self.myY = aY;
 
-	var poller = new ResizePoller(data);
-
-	var prev = new Block(data);
-	var curr = new Block(data);
-	var next = new Block(data);
-
-	prev.cursor(-1);
-	curr.cursor(0);
-	next.cursor(1);
-
-	self.blocks = [
-		prev,
-		curr,
-		next
-	];
-
-	self.containerStyle = ko.pureComputed(function () {
-		var childSize = ko.unwrap(self.data.childSize);
-		var childCount = ko.unwrap(self.data.childCount);
-		var gridSize = self.data.gridSize();
-
-		if (childSize == undefined ||
-			gridSize == undefined ||
-			gridSize.cols == 0 ||
-			childCount == 0)
-		{
-			return {
-				width: "100%",
-				height: 0,
-			};
+	self.myWidth = ko.pureComputed(function() {
+		if (!self.myData.myChildSize()) {
+			return 0;
 		}
 
-		var height = Math.ceil(childCount / gridSize.cols) * childSize.height;
+		return self.myData.myChildSize().myWidth;
+	});
 
+	self.myHeight = ko.pureComputed(function() {
+		if (!self.myData.myChildSize()) {
+			return 0;
+		}
+
+		return self.myData.myChildSize().myHeight;
+	});
+
+	self.myStyle = ko.pureComputed(function() {
 		return {
-			position: 'relative',
-			width: "100%",
-			height: height + 'px',
-			overflow: 'hidden',
+			position: "absolute",
+			top: self.myY + "px",
+			left: self.myX + "px",
+			width: self.myWidth() + "px",
+			height: self.myHeight() + "px",
 		};
 	});
 
-	self.setup = function () {
-		var element = $(data.element);
-		if (!element)
-		{
-			console.error("SuperScroll needs to be bound to a container element");
-			return;
+	self.myContext = ko.computed(function () {
+		var context = self.myData.myContext();
+		var childModel = self.myChildModel();
+
+		if (!context || !childModel) {
+			return {};
 		}
 
-		self.data.scrollTop.subscribe(function (value) {
-			var grid = self.data.gridSize();
-			var childSize = ko.unwrap(self.data.childSize);
+		return context.createChildContext(childModel);
+	});
 
-			if (!grid ||
-					!childSize ||
-					grid.cols == 0 ||
-					childSize.height == 0)
-			{
-				return;
-			}
+	self.myTemplate = ko.computed(function() {
+		if (!self.myData.myChildTemplate()) {
+			return "";
+		}
 
-			var cursor = Math.floor(value / (self.data.gridSize().rows * childSize.height));
+		return self.myData.myChildTemplate();
+	});
+}
 
-			if (cursor < prev.cursor() ||
-					cursor > next.cursor())
-			{
-				prev.cursor(cursor - 1);
-				curr.cursor(cursor);
-				next.cursor(cursor + 1);
-			}
-			else if (cursor == prev.cursor())
-			{
-				var tmp = next;
-				next = curr;
-				curr = prev;
-				prev = tmp;
-
-				prev.cursor(cursor - 1);
-			}
-			else if (cursor == next.cursor())
-			{
-				var tmp = prev;
-				prev = curr;
-				curr = next;
-				next = tmp;
-
-				next.cursor(cursor + 1);
-			}
-		});
-
-		poller.start(element);
-	};
-
-	self.dispose = function () {
-		poller.stop = true;
-		poller = null;
-	};
-};
-
-function ResizePoller(data) {
-
+function ListBlock(aData, aInitialCursor)
+{
 	var self = this;
 
-	self.stop = false;
+	self.myData = aData;
+	self.myCursor = ko.observable(aInitialCursor);
 
-	function poll() {
-		var elementSize = data.elementSize();
-
-		if (!elementSize ||
-			self.element.width() != elementSize.width ||
-			self.element.height() != elementSize.height)
+	self.myTop = ko.pureComputed(function () {
+		var grid = self.myData.myGrid();
+		if (!grid)
 		{
-			data.elementSize({
-				width: self.element.width(),
-				height: self.element.height(),
-			});
-
-			data.scrollTop.valueHasMutated();
+			return 0;
 		}
 
-		if (!self.stop)
-		{
-			setTimeout(poll, 20);
+		var top = self.myCursor() * grid.myHeight;
+		var scrollTop = $(self.myData.myElement).scrollTop();
+
+		return self.myCursor() * grid.myHeight;
+	});
+
+	self.myStyle = ko.pureComputed(function () {
+		var grid = self.myData.myGrid();
+		if (!grid) {
+			return { "display": "none" };
+		}
+
+		return {
+			"display": "block",
+			"position": "absolute",
+			"top": self.myTop() + "px",
+			"left": "0px",
+			"width": grid.myWidth + "px",
+			"height": grid.myHeight + "px",
+			"overflow": "none",
+		};
+	});
+
+	self.myCache = ko.pureComputed(function() {
+		var grid = self.myData.myGrid();
+		if (!grid) {
+			return undefined;
+		}
+
+		var width = grid.myWidth / grid.myCols;
+		var height = grid.myHeight / grid.myRows;
+
+		var children = [];
+		for (var row = 0; row < grid.myRows; row++) {
+			for (var col = 0; col < grid.myCols; col++) {
+				var x = col * width;
+				var y = row * height;
+
+				children.push(new ListChild(self.myData, x, y));
+			}
+		}
+		return children;
+	});
+
+	self.myInitialized = ko.computed(function() {
+		return !!self.myData.myContext();
+	});
+
+	self.myChildren = ko.computed(function() {
+		var grid = self.myData.myGrid();
+		var context = self.myData.myContext();
+
+		if (!grid || !context || grid.myCols == 0 || grid.myRows == 0) {
+			return [];
+		}
+
+		if (self.myCursor() < 0) {
+			return [];
+		}
+
+		var width = grid.myWidth / grid.myCols;
+		var height = grid.myHeight / grid.myRows;
+
+		var count = grid.myCols * grid.myRows;
+
+		var childData = self.myData.myResource().get(self.myCursor() * count, count);
+		
+		var children = [];
+
+		for (var row = 0; row < grid.myRows; row++) {
+			for (var col = 0; col < grid.myCols; col++) {
+				var i = row * grid.myCols + col;
+				if (i >= childData.length) {
+					break;
+				}
+
+				var child = new ListChild(self.myData, col*width, row*height);
+				child.myChildModel(childData[i]);
+				children.push(child);
+			}
+		}
+
+		return children;
+	});
+}
+
+function ListContainer(aData) {
+	var self = this;
+
+	self.myData = aData;
+
+	var prev = new ListBlock(aData, -1);
+	var curr = new ListBlock(aData, 0);
+	var next = new ListBlock(aData, 1);
+
+	self.myBlocks = [prev, curr, next];
+
+	self.myHeight = ko.pureComputed(function() {
+		var grid = self.myData.myGrid();
+		var childSize = self.myData.myChildSize();
+		var childCount = self.myData.myChildCount();
+
+		if (!grid || !childSize || !childCount || grid.myCols == 0) {
+			return 0;
+		}
+
+		var rowCount = Math.ceil(childCount / grid.myCols);
+
+		return rowCount * childSize.myHeight;
+	});
+
+	self.myStyle = ko.pureComputed(function() {
+		return {
+			"position": "relative",
+			"height": self.myHeight() + "px",
+			"width": "100%",
+			"overflow": "hidden",
+		};
+	});
+
+	self.myData.myGrid.subscribe(function (aNewValue) {
+		var grid = aNewValue;
+		if (!grid || grid.myRows == 0) {
 			return;
 		}
 
-		self.element.unbind("scroll");
+		$(self.myData.myElement).scroll();
+	});
+
+	$(self.myData.myElement).scroll(function () {
+		var grid = self.myData.myGrid();
+		if (!grid || grid.myHeight == 0) {
+			return;
+		}
+
+		var top = $(self.myData.myElement).scrollTop();
+		var cursor = Math.floor(top / grid.myHeight);
+
+		// The cursor hasn't changed, just remain
+		if (cursor == curr.myCursor()) {
+			return;
+		}
+
+		// The cursor has moved to the next block, shift downwards
+		if (cursor == next.myCursor()) {
+			var tmp = prev;
+			prev = curr;
+			curr = next;
+			next = tmp;
+			next.myCursor(curr.myCursor() + 1);
+			return;
+		}
+
+		// The cursor has moved to the previous block, shift upwards
+		if (cursor == prev.myCursor()) {
+			var tmp = next;
+			next = curr;
+			curr = prev;
+			prev = tmp;
+			prev.myCursor(curr.myCursor() - 1);
+			return;
+		}
+
+		// Cursor has moved drastically, reset all blocks
+		prev.myCursor(cursor - 1);
+		curr.myCursor(cursor);
+		next.myCursor(cursor + 1);
+	});
+
+	function pollSize() {
+		var width = $(self.myData.myElement).width();
+		var height = $(self.myData.myElement).height();
+
+		var elementSize = self.myData.myElementSize();
+		if (elementSize &&
+			elementSize.myWidth == width &&
+			elementSize.myHeight == height) {
+			setTimeout(pollSize, 50);
+			return;
+		}
+
+		self.myData.myElementSize({
+			myWidth: width,
+			myHeight: height,
+		});
+		setTimeout(pollSize, 50);
 	};
 
-	self.start = function (element) {
-		self.element = element;
+	pollSize();
+}
 
-		poll();
+function SuperScroll() {
+	var self = this;
 
-		self.element.scroll(function () {
-			data.scrollTop(self.element.scrollTop());
+	self.myContainers = {};
+
+	self.init = function(aElement, aValueAccessor, aAllBindings, aViewModel, aBindingsContext) {
+		var listData = new ListData(aElement);
+		var listContainer = new ListContainer(listData);
+
+		self.myContainers[aElement] = listContainer;
+
+		var context = aBindingsContext.createChildContext(listContainer);
+		ko.renderTemplate("super-scroll-template", context, {}, aElement);
+
+		return { controlsDescendantBindings: true };
+	};
+	self.update = function(aElement, aValueAccessor, aAllBindings, aViewModel, aBindingsContext) {
+		var value = ko.unwrap(aValueAccessor());
+		var template = ko.unwrap(value.template);
+		var resource = ko.unwrap(value.resource);
+		var childSize = value.childSize;
+
+		var container = self.myContainers[aElement];
+
+		container.myData.myChildTemplate(template);
+		container.myData.myResource(resource);
+		container.myData.myContext(aBindingsContext);
+		container.myData.myChildSize(childSize());
+
+		childSize.subscribe(function (aNewValue) {
+			container.myData.myChildSize(aNewValue);
 		});
 	};
-};
+}
 
-ko.components.register('superScroll', {
-	viewModel: {
-		createViewModel: function (params, componentInfo) {
-			params = ko.unwrap(params);
+function SuperScrollChild() {
+	var self = this;
 
-			var data = new SharedData();
-			data.resource = params.resource;
-			data.childCount = params.childCount;
-			data.childTemplate = params.childTemplate;
-			data.childSize = params.childSize;
-			data.element = componentInfo.element;
+	self.update = function(aElement, aValueAccessor, aAllBindings, aViewModel, aBindingsContext) {
+		var value = ko.unwrap(aValueAccessor());
+		var template = ko.unwrap(value.template);
+		var context = ko.unwrap(value.context);
 
-			var superScroll = new SuperScroll(data);
-			superScroll.setup();
+		ko.renderTemplate(template, context, {}, aElement, "replaceNode");
+	};
+}
 
-			return superScroll;
-		},
-	},
-	template: template,
-});
+ko.bindingHandlers.superScroll = new SuperScroll();
+ko.bindingHandlers.superScrollChild = new SuperScrollChild();
