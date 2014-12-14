@@ -28,15 +28,7 @@ function ListData(aElement) {
 	self.myResource = ko.observable();
 	self.myChildSize = ko.observable();
 	self.myElementSize = ko.observable();
-
-	self.myChildCount = ko.pureComputed(function () {
-		var resource = self.myResource();
-		if (!resource) {
-			return 0;
-		}
-
-		return resource.getCount();
-	});
+	self.myChildCount = ko.observable();
 
 	self.myGrid = ko.pureComputed(function() {
 		var elementSize = self.myElementSize();
@@ -204,23 +196,22 @@ function ListBlock(aData, aInitialCursor)
 		var height = grid.myHeight / grid.myRows;
 
 		var count = grid.myCols * grid.myRows;
-
-		var childData = self.myData.myResource().get(self.myCursor() * count, count);
 		
 		var children = [];
 
 		for (var row = 0; row < grid.myRows; row++) {
 			for (var col = 0; col < grid.myCols; col++) {
-				var i = row * grid.myCols + col;
-				if (i >= childData.length) {
-					break;
-				}
-
-				var child = new ListChild(self.myData, col*width, row*height);
-				child.myChildModel(childData[i]);
+				var child = new ListChild(self.myData, col * width, row * height);
 				children.push(child);
 			}
 		}
+
+		self.myData.myResource().get(self.myCursor() * count, count)
+			.done(function (aChildData) {
+				for (var i = 0; i < aChildData.length; i++) {
+					children[i].myChildModel(aChildData[i]);
+				}
+			});
 
 		return children;
 	});
@@ -363,6 +354,11 @@ function SuperScroll() {
 		childSize.subscribe(function (aNewValue) {
 			container.myData.myChildSize(aNewValue);
 		});
+
+		resource.getCount()
+			.done(function(aCount) {
+				container.myData.myChildCount(aCount);
+			});
 	};
 }
 

@@ -43,9 +43,15 @@
 
 			self.myResource = {
 				getCount: function() {
-					return count;
+					var deferred = $.Deferred();
+
+					deferred.resolve(count);
+
+					return deferred.promise();
 				},
 				get: function(aOffset, aLimit) {
+					var deferred = $.Deferred();
+
 					var children = [];
 					for (var i = aOffset; i < aOffset + aLimit; i++) {
 						if (i >= count) {
@@ -56,7 +62,9 @@
 						children.push(child);
 					}
 
-					return children;
+					deferred.resolve(children);
+
+					return deferred.promise();
 				},
 			}
 
