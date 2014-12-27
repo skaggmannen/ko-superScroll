@@ -329,15 +329,21 @@ function SuperScroll() {
 
 		var container = self.myContainers[aElement];
 
+		var oldResource = container.myData.myResource();
+
 		container.myData.myChildTemplate(template);
-		container.myData.myResource(resource);
 		container.myData.myContext(aBindingsContext);
 		container.myData.myChildSize(childSize);
 
-		resource.getCount()
-			.done(function (aCount) {
-				container.myData.myChildCount(aCount);
-			});
+		if (resource != oldResource) {
+			container.myData.myChildCount(undefined);
+			container.myData.myResource(resource);
+			resource.getCount()
+				.done(function (aCount) {
+					container.myData.myChildCount(aCount);
+				});	
+		}
+		
 	};
 }
 
