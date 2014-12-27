@@ -5,9 +5,11 @@ var template = '\
 		<!-- ko foreach: myBlocks --> \
 			<div data-bind="style: myStyle"> \
 				<!-- ko foreach: myChildren --> \
-					<div data-bind="style: myStyle"> \
-						<div data-bind="superScrollChild: { template: myTemplate, context: myContext }"></div> \
-					</div> \
+					<!-- ko if: myChildModel --> \
+						<div data-bind="style: myStyle"> \
+							<div data-bind="superScrollChild: { template: myTemplate, context: myContext }"></div> \
+						</div> \
+					<!-- /ko --> \
 				<!-- /ko --> \
 			</div> \
 		<!-- /ko --> \
@@ -28,13 +30,15 @@ function ListData(aElement) {
 	self.myResource = ko.observable();
 	self.myChildSize = ko.observable();
 	self.myElementSize = ko.observable();
+
 	self.myChildCount = ko.observable();
 
 	self.myGrid = ko.pureComputed(function() {
 		var elementSize = self.myElementSize();
 		var childSize = self.myChildSize();
+		var childCount = self.myChildCount();
 
-		if (!childSize || !elementSize ||
+		if (!childSize || !elementSize || !childCount ||
 			childSize.myWidth == 0 || 
 			childSize.myHeight == 0)
 		{
@@ -133,7 +137,6 @@ function ListBlock(aData, aInitialCursor)
 		}
 
 		var top = self.myCursor() * grid.myHeight;
-		var scrollTop = $(self.myData.myElement).scrollTop();
 
 		return self.myCursor() * grid.myHeight;
 	});
@@ -155,27 +158,6 @@ function ListBlock(aData, aInitialCursor)
 		};
 	});
 
-	self.myCache = ko.pureComputed(function() {
-		var grid = self.myData.myGrid();
-		if (!grid) {
-			return undefined;
-		}
-
-		var width = grid.myWidth / grid.myCols;
-		var height = grid.myHeight / grid.myRows;
-
-		var children = [];
-		for (var row = 0; row < grid.myRows; row++) {
-			for (var col = 0; col < grid.myCols; col++) {
-				var x = col * width;
-				var y = row * height;
-
-				children.push(new ListChild(self.myData, x, y));
-			}
-		}
-		return children;
-	});
-
 	self.myInitialized = ko.computed(function() {
 		return !!self.myData.myContext();
 	});
@@ -183,8 +165,9 @@ function ListBlock(aData, aInitialCursor)
 	self.myChildren = ko.computed(function() {
 		var grid = self.myData.myGrid();
 		var context = self.myData.myContext();
+		var resource = self.myData.myResource();
 
-		if (!grid || !context || grid.myCols == 0 || grid.myRows == 0) {
+		if (!grid || !context || !resource || grid.myCols == 0 || grid.myRows == 0) {
 			return [];
 		}
 
@@ -196,20 +179,20 @@ function ListBlock(aData, aInitialCursor)
 		var height = grid.myHeight / grid.myRows;
 
 		var count = grid.myCols * grid.myRows;
-		
 		var children = [];
 
 		for (var row = 0; row < grid.myRows; row++) {
 			for (var col = 0; col < grid.myCols; col++) {
-				var child = new ListChild(self.myData, col * width, row * height);
+				var i = row * grid.myCols + col;
+				var child = new ListChild(self.myData, col*width, row*height);
 				children.push(child);
 			}
 		}
 
-		self.myData.myResource().get(self.myCursor() * count, count)
+		resource.get(self.myCursor() * count, count)
 			.done(function (aChildData) {
 				for (var i = 0; i < aChildData.length; i++) {
-					children[i].myChildModel(aChildData[i]);
+					children[i].myChildModel(aChildData[i]);	
 				}
 			});
 
@@ -342,21 +325,17 @@ function SuperScroll() {
 		var value = ko.unwrap(aValueAccessor());
 		var template = ko.unwrap(value.template);
 		var resource = ko.unwrap(value.resource);
-		var childSize = value.childSize;
+		var childSize = ko.unwrap(value.childSize);
 
 		var container = self.myContainers[aElement];
 
 		container.myData.myChildTemplate(template);
 		container.myData.myResource(resource);
 		container.myData.myContext(aBindingsContext);
-		container.myData.myChildSize(childSize());
-
-		childSize.subscribe(function (aNewValue) {
-			container.myData.myChildSize(aNewValue);
-		});
+		container.myData.myChildSize(childSize);
 
 		resource.getCount()
-			.done(function(aCount) {
+			.done(function (aCount) {
 				container.myData.myChildCount(aCount);
 			});
 	};
